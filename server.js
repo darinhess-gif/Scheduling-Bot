@@ -112,6 +112,7 @@ wss.on('connection', (ws) => {
   let isProcessing = false;
   let timeCheckMarkId = null; // Mark ID for the time check audio finish
   let greetingComplete = false; // Whether the greeting sequence has finished playing
+  let botSpeakingMarkId = null; // Mark ID for the bot's current response audio
 
   // ─── Send audio to Twilio ───────────────────────────────────────────
   function sendAudioToTwilio(audioBuffer) {
@@ -222,16 +223,20 @@ wss.on('connection', (ws) => {
         content: `ROUTE:${decision.route}\n${decision.spokenText}`,
       });
 
-      // Speak the response
+      // Cancel silence timer while bot is speaking
+      clearSilenceTimer();
+
+      // Speak the response and track the mark so we know when it finishes
       try {
         const audio = await synthesizeSpeech(decision.spokenText);
-        sendAudioToTwilio(audio);
+        botSpeakingMarkId = sendAudioToTwilio(audio);
       } catch (err) {
         console.error('[TTS] ElevenLabs failed, using fallback:', err.message);
+        botSpeakingMarkId = null;
         sendTwilioTTS(decision.spokenText);
       }
 
-      // Handle routing
+      // Handle routing (silence timer restarts via mark event for NONE/SCHEDULE)
       await handleRoute(decision.route, decision.spokenText);
     } catch (err) {
       console.error('[Claude] API error, falling back to live transfer:', err.message);
@@ -341,13 +346,10 @@ wss.on('connection', (ws) => {
       }
 
       case 'SCHEDULE':
-        // Continue conversation to collect preferred time
-        startSilenceTimer();
-        break;
-
       case 'NONE':
       default:
-        startSilenceTimer();
+        // Silence timer will restart when the bot's response audio
+        // finishes playing (via mark event), not here.
         break;
     }
   }
@@ -448,14 +450,27 @@ wss.on('connection', (ws) => {
           }
           break;
 
-        case 'mark':
-          // Audio playback mark reached — check if this is the time check finishing
-          if (msg.mark?.name && msg.mark.name === timeCheckMarkId) {
+        case 'mark': {
+          const markName = msg.mark?.name;
+          if (!markName) break;
+
+          // Time check audio finished — greeting sequence is done
+          if (markName === timeCheckMarkId) {
             greetingComplete = true;
             console.log('[Twilio] Time check audio finished playing, starting silence timer');
             startSilenceTimer();
           }
+
+          // Bot's response audio finished — safe to start silence timer
+          if (markName === botSpeakingMarkId) {
+            botSpeakingMarkId = null;
+            console.log('[Twilio] Bot response audio finished playing');
+            if (!routeDecision) {
+              startSilenceTimer();
+            }
+          }
           break;
+        }
 
         case 'stop':
           console.log(`[Twilio] Stream stopped: ${streamSid}`);

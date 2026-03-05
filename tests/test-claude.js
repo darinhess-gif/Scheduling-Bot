@@ -5,8 +5,18 @@ dotenv.config();
 
 const testCases = [
   {
-    name: 'Client has time (LIVE)',
-    history: [{ role: 'user', content: "Yeah, I've got about an hour free right now." }],
+    name: 'Simple yes (LIVE)',
+    history: [{ role: 'user', content: "Yeah" }],
+    expectedRoute: 'LIVE',
+  },
+  {
+    name: 'Affirmative with detail (LIVE)',
+    history: [{ role: 'user', content: "Sure, I've got about an hour free right now." }],
+    expectedRoute: 'LIVE',
+  },
+  {
+    name: 'Short affirmative (LIVE)',
+    history: [{ role: 'user', content: "Yep let's do it" }],
     expectedRoute: 'LIVE',
   },
   {
@@ -23,7 +33,7 @@ const testCases = [
     name: 'Client provides time (SCHEDULE_CONFIRM)',
     history: [
       { role: 'user', content: "I'd rather schedule, I'm busy right now." },
-      { role: 'assistant', content: "ROUTE:SCHEDULE\nNo problem! What day and time would work best for you?" },
+      { role: 'assistant', content: "ROUTE:SCHEDULE\nNo problem! What day and time work best?" },
       { role: 'user', content: "How about tomorrow at 2pm?" },
     ],
     expectedRoute: 'SCHEDULE_CONFIRM',
