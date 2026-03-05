@@ -8,8 +8,11 @@ const DEEPGRAM_PARAMS = new URLSearchParams({
   sample_rate: '8000',
   channels: '1',
   punctuate: 'true',
-  endpointing: '300',
+  smart_format: 'true',
+  filler_words: 'true',
+  endpointing: '500',
   interim_results: 'true',
+  keywords: 'onboarding:2,schedule:2,45 minutes:2,available:1,tomorrow:1,callback:1',
 });
 
 export function createDeepgramConnection({ onTranscript, onError, onClose }) {
