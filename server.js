@@ -110,6 +110,8 @@ wss.on('connection', (ws) => {
   let fullTranscript = [];
   let routeDecision = null;
   let isProcessing = false;
+  let timeCheckMarkId = null; // Mark ID for the time check audio finish
+  let greetingComplete = false; // Whether the greeting sequence has finished playing
 
   // ─── Send audio to Twilio ───────────────────────────────────────────
   function sendAudioToTwilio(audioBuffer) {
@@ -136,14 +138,17 @@ wss.on('connection', (ws) => {
   }
 
   // ─── Play greeting sequence ─────────────────────────────────────────
+  // Sends greeting audio, then time check audio. The silence timer is NOT
+  // started here — it starts only when Twilio sends back the mark event
+  // confirming the time check audio has finished playing.
   async function playGreetingSequence() {
     if (hasPlayedGreeting) return;
     hasPlayedGreeting = true;
 
+    // Send greeting audio
     if (greetingAudio) {
       sendAudioToTwilio(greetingAudio);
     } else {
-      // Fallback: generate on-the-fly
       try {
         const audio = await synthesizeSpeech(
           "Hey! Congrats on getting started. I just have one quick question before I connect you with your onboarding specialist."
@@ -155,25 +160,27 @@ wss.on('connection', (ws) => {
       }
     }
 
-    // Short pause then time check
-    setTimeout(() => {
-      if (timeCheckAudio) {
-        sendAudioToTwilio(timeCheckAudio);
-      } else {
-        synthesizeSpeech(
+    // Queue time check audio right after — Twilio plays them in order.
+    // The final mark event from this audio is what triggers the silence timer.
+    if (timeCheckAudio) {
+      timeCheckMarkId = sendAudioToTwilio(timeCheckAudio);
+    } else {
+      try {
+        const audio = await synthesizeSpeech(
           "Onboarding usually takes about 45 minutes to get everything dialed in. Do you have about 45 minutes right now, or would it be better to schedule a time that works for you?"
-        )
-          .then((audio) => sendAudioToTwilio(audio))
-          .catch(() => {
-            sendTwilioTTS("Onboarding usually takes about 45 minutes. Do you have about 45 minutes right now, or would it be better to schedule a time?");
-          });
+        );
+        timeCheckMarkId = sendAudioToTwilio(audio);
+      } catch (err) {
+        sendTwilioTTS("Onboarding usually takes about 45 minutes. Do you have about 45 minutes right now, or would it be better to schedule a time?");
+        // Fallback TTS — can't track mark, so start timer after a generous delay
+        setTimeout(() => {
+          greetingComplete = true;
+          startSilenceTimer();
+        }, 12000);
       }
+    }
 
-      // Start listening after time check plays (estimate audio duration)
-      setTimeout(() => {
-        startSilenceTimer();
-      }, 5000);
-    }, 3000);
+    console.log(`[Greeting] Queued greeting + time check, waiting for mark ${timeCheckMarkId}`);
   }
 
   // ─── Twilio native TTS fallback ────────────────────────────────────
@@ -351,6 +358,9 @@ wss.on('connection', (ws) => {
       onTranscript({ transcript, isFinal, speechFinal, confidence }) {
         if (!isFinal) return; // Only act on final results
 
+        // Ignore transcripts received while greeting is still playing
+        if (!greetingComplete) return;
+
         clearSilenceTimer();
 
         // Dead air / low confidence detection
@@ -439,7 +449,12 @@ wss.on('connection', (ws) => {
           break;
 
         case 'mark':
-          // Audio playback mark reached
+          // Audio playback mark reached — check if this is the time check finishing
+          if (msg.mark?.name && msg.mark.name === timeCheckMarkId) {
+            greetingComplete = true;
+            console.log('[Twilio] Time check audio finished playing, starting silence timer');
+            startSilenceTimer();
+          }
           break;
 
         case 'stop':
