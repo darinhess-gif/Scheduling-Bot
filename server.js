@@ -113,6 +113,7 @@ wss.on('connection', (ws) => {
   let timeCheckMarkId = null; // Mark ID for the time check audio finish
   let greetingComplete = false; // Whether the greeting sequence has finished playing
   let botSpeakingMarkId = null; // Mark ID for the bot's current response audio
+  let botAudioResolve = null; // Resolves when bot's response audio finishes playing
 
   // ─── Send audio to Twilio ───────────────────────────────────────────
   function sendAudioToTwilio(audioBuffer) {
@@ -208,6 +209,23 @@ wss.on('connection', (ws) => {
     }
   }
 
+  // ─── Wait for bot audio to finish playing ────────────────────────────
+  function waitForBotAudioFinished() {
+    if (!botSpeakingMarkId) return Promise.resolve();
+
+    return new Promise((resolve) => {
+      botAudioResolve = resolve;
+      // Fallback: transfer anyway after 5s if mark never arrives
+      setTimeout(() => {
+        if (botAudioResolve) {
+          console.log('[Audio] 5s timeout waiting for mark, proceeding anyway');
+          botAudioResolve = null;
+          resolve();
+        }
+      }, 5000);
+    });
+  }
+
   // ─── Handle route decision from Claude ──────────────────────────────
   async function handleRouteDecision(isSilenceCheck = false) {
     if (isProcessing) return;
@@ -260,6 +278,9 @@ wss.on('connection', (ws) => {
         routeDecision = route;
         clearSilenceTimer();
 
+        // Wait for the bot's "connecting you now" audio to finish playing
+        await waitForBotAudioFinished();
+
         const ringGroupNumber = process.env.DIALPAD_RING_GROUP_NUMBER;
         console.log(`[Route] Transferring to ring group: ${ringGroupNumber}`);
 
@@ -306,6 +327,9 @@ wss.on('connection', (ws) => {
         routeDecision = route;
         clearSilenceTimer();
 
+        // Wait for the bot's confirmation audio to finish playing
+        await waitForBotAudioFinished();
+
         // Extract preferred time from conversation
         const lastUserMsg = conversationHistory
           .filter((m) => m.role === 'user')
@@ -327,20 +351,18 @@ wss.on('connection', (ws) => {
           duration: Math.round((Date.now() - callStartTime) / 1000),
         }).catch((err) => console.error('[Log] Failed:', err.message));
 
-        // End call after a short delay
-        setTimeout(() => {
-          try {
-            const twilioClient = twilio(
-              process.env.TWILIO_ACCOUNT_SID,
-              process.env.TWILIO_AUTH_TOKEN
-            );
-            twilioClient.calls(callSid).update({
-              twiml: '<Response><Hangup/></Response>',
-            });
-          } catch (err) {
-            console.error('[Route] Hangup failed:', err.message);
-          }
-        }, 5000);
+        // End call now that audio has finished
+        try {
+          const twilioClient = twilio(
+            process.env.TWILIO_ACCOUNT_SID,
+            process.env.TWILIO_AUTH_TOKEN
+          );
+          await twilioClient.calls(callSid).update({
+            twiml: '<Response><Hangup/></Response>',
+          });
+        } catch (err) {
+          console.error('[Route] Hangup failed:', err.message);
+        }
 
         break;
       }
@@ -461,10 +483,19 @@ wss.on('connection', (ws) => {
             startSilenceTimer();
           }
 
-          // Bot's response audio finished — safe to start silence timer
+          // Bot's response audio finished
           if (markName === botSpeakingMarkId) {
             botSpeakingMarkId = null;
             console.log('[Twilio] Bot response audio finished playing');
+
+            // Resolve any pending waitForBotAudioFinished promise
+            if (botAudioResolve) {
+              const resolve = botAudioResolve;
+              botAudioResolve = null;
+              resolve();
+            }
+
+            // Restart silence timer if still in conversation
             if (!routeDecision) {
               startSilenceTimer();
             }
