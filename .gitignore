@@ -1,0 +1,4 @@
+node_modules/
+.env
+audio/*.ulaw
+call_log.json

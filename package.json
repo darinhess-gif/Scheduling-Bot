@@ -1,0 +1,25 @@
+{
+  "name": "voice-triage-bot",
+  "version": "1.0.0",
+  "description": "Voice triage bot for AI onboarding team - routes incoming calls to live CSM or schedules callbacks",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test:deepgram": "node tests/test-deepgram.js",
+    "test:claude": "node tests/test-claude.js",
+    "test:elevenlabs": "node tests/test-elevenlabs.js",
+    "test:slack": "node tests/test-slack.js",
+    "generate-audio": "node src/generate-audio.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@deepgram/sdk": "^3.9.0",
+    "dotenv": "^16.4.7",
+    "elevenlabs": "^1.3.0",
+    "express": "^4.21.1",
+    "twilio": "^5.4.3",
+    "ws": "^8.18.0"
+  }
+}
