@@ -166,13 +166,13 @@ wss.on('connection', (ws) => {
     if (greetingAudio) {
       sendAudioToTwilio(greetingAudio);
     } else {
-      await speakOrFallback("Hey! Congrats on getting started. I just have one quick question before I connect you with your onboarding specialist.");
+      await speakOrFallback("Hey, congrats on getting started!");
     }
 
     if (timeCheckAudio) {
       timeCheckMarkId = sendAudioToTwilio(timeCheckAudio);
     } else {
-      const text = "Onboarding usually takes about 45 minutes to get everything dialed in. Do you have about 45 minutes right now, or would it be better to schedule a time that works for you?";
+      const text = "Onboarding takes about 45 minutes. Do you have time right now, or would you rather schedule?";
       timeCheckMarkId = await speakOrFallback(text);
       if (!timeCheckMarkId) {
         setTimeout(() => { greetingComplete = true; startSilenceTimer(); }, 12000);

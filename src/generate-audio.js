@@ -8,8 +8,8 @@ dotenv.config();
 const AUDIO_DIR = './audio';
 
 const MESSAGES = {
-  greeting: "Hey! Congrats on getting started. I just have one quick question before I connect you with your onboarding specialist.",
-  time_check: "Onboarding usually takes about 45 minutes to get everything dialed in. Do you have about 45 minutes right now, or would it be better to schedule a time that works for you?",
+  greeting: "Hey, congrats on getting started!",
+  time_check: "Onboarding takes about 45 minutes. Do you have time right now, or would you rather schedule?",
 };
 
 async function generateAudioFiles() {
